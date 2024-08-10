@@ -1,6 +1,7 @@
 import logging
 import asyncio
-from aiogram import Bot, Dispatcher, types, F
+import os
+from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -8,21 +9,21 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from telethon import TelegramClient
 from config import BOT_TOKEN, YOUR_ADMIN_ID
 import sqlite3
+
 API_TOKEN = BOT_TOKEN
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
+api_id = '###'
+api_hash = '####'
+phone_number = '####'
 
-api_id = '28312933'
-api_hash = '1f75793fc211a5eb3812a860cfe6c713'
-phone_number = '+998883601656'
 # Telethon Client
 client = TelegramClient('session_name', api_id, api_hash)
 
 async def start_telethon_client():
     await client.start(phone_number)
-
 
 class Form(StatesGroup):
     adding_group = State()
@@ -32,21 +33,16 @@ class Form1(StatesGroup):
 
 @dp.message(Command('start'))
 async def CommandStart(message: types.Message):
-    await message.answer(f"")
-
-
-
-
+    await message.answer("Salom!")
 
 @dp.message(Command(commands=["guruh"]))
 async def ask_for_group_link(message: types.Message, state: FSMContext):
-    if message.from_user.id != YOUR_ADMIN_ID:
+    if message.from_user.id not in YOUR_ADMIN_ID:
         await message.answer("Sizda bu komanda uchun ruxsat yo'q.")
         return
 
     await message.answer("Guruh linklarini yuboring:")
     await state.set_state(Form.adding_group)
-
 
 @dp.message(Form.adding_group)
 async def add_group_link(message: types.Message, state: FSMContext):
@@ -69,10 +65,10 @@ async def add_group_link(message: types.Message, state: FSMContext):
         "Yana guruh linklarini yuborishingiz mumkin yoki /send komandasi orqali xabar yuborishingiz mumkin.")
     await state.clear()
 
-
 @dp.message(Command(commands=["send"]))
 async def ask_for_post(message: types.Message, state: FSMContext):
-    if message.from_user.id != YOUR_ADMIN_ID:
+    a = message.from_user.id
+    if a not in YOUR_ADMIN_ID:
         await message.answer("Sizda bu komanda uchun ruxsat yo'q.")
         return
 
@@ -94,16 +90,33 @@ async def send_to_groups(message: types.Message, state: FSMContext):
                 if message.content_type == 'text':
                     await client.send_message(entity, message.text)
                 elif message.photo:
-                    await client.send_file(entity, await message.photo[-1].download(), caption=message.caption)
+                    file_info = await bot.get_file(message.photo[-1].file_id)
+                    file_path = await bot.download_file(file_info.file_path)
+                    filename = f"{message.photo[-1].file_id}.jpg"
+                    with open(filename, "wb") as f:
+                        f.write(file_path.getvalue())
+                    await client.send_file(entity, filename, caption=message.caption)
+                    os.remove(filename)  # Clean up the file after sending
                 elif message.video:
-                    await client.send_file(entity, await message.video.download(), caption=message.caption)
+                    file_info = await bot.get_file(message.video.file_id)
+                    file_path = await bot.download_file(file_info.file_path)
+                    filename = f"{message.video.file_id}.mp4"
+                    with open(filename, "wb") as f:
+                        f.write(file_path.getvalue())
+                    await client.send_file(entity, filename, caption=message.caption)
+                    os.remove(filename)  # Clean up the file after sending
                 elif message.document:
-                    await client.send_file(entity, await message.document.download(), caption=message.caption)
-                await message.answer(f"Xabar {link} ga yuborildi.")
+                    file_info = await bot.get_file(message.document.file_id)
+                    file_path = await bot.download_file(file_info.file_path)
+                    filename = f"{message.document.file_id}.pdf"
+                    with open(filename, "wb") as f:
+                        f.write(file_path.getvalue())
+                    await client.send_file(entity, filename, caption=message.caption)
+                    os.remove(filename)  # Clean up the file after sending
             except Exception as e:
                 await message.answer(f"Xabar {link} ga yuborishda xato: {e}")
                 logging.error(f"Xato yuz berdi: {e}")
-
+        await message.answer(f"Xabarlar yuborildi.")
     await state.clear()
 
 def add_data(link):
