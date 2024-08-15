@@ -12,9 +12,7 @@ cursor = conn.cursor()
 # )
 # ''')
 
-# api_id = '28312933'
-# api_hash = '1f75793fc211a5eb3812a860cfe6c713'
-# phone_number = '+998883601656'
+
 
 
 def add_data(link):
