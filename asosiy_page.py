@@ -9,10 +9,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from telethon import TelegramClient
 from config import BOT_TOKEN, YOUR_ADMIN_ID
 import sqlite3
-import asyncio
-from aiogram import types
-# from aiogram.dispatcher import FSMContext
-
 
 API_TOKEN = BOT_TOKEN
 
@@ -69,9 +65,8 @@ async def add_group_link(message: types.Message, state: FSMContext):
         "Yana guruh linklarini yuborishingiz mumkin yoki /send komandasi orqali xabar yuborishingiz mumkin.")
     await state.clear()
 
-
-
 is_sending = False  # Xabarlar yuborilish jarayonini nazorat qilish uchun flag
+semaphore = asyncio.Semaphore(5)  # Bir vaqtda 5 ta xabar yuborish imkoniyatini cheklash
 
 async def send_to_group(link, message):
     try:
@@ -107,12 +102,16 @@ async def send_to_group(link, message):
         logging.error(f"Xato yuz berdi: {e}")
         return link  # Obuna bo'lmagan guruhni qaytarish
 
+async def send_to_group_with_semaphore(link, message):
+    async with semaphore:
+        await asyncio.sleep(0.1)  # Har bir xabar yuborishdan oldin 0.1 soniya kechikish
+        return await send_to_group(link, message)
+
 @dp.message(Command(commands=["send"]))
 async def ask_for_post(message: types.Message, state: FSMContext):
     global is_sending
 
-    a = message.from_user.id
-    if a not in YOUR_ADMIN_ID:
+    if message.from_user.id not in YOUR_ADMIN_ID:
         await message.answer("Sizda bu komanda uchun ruxsat yo'q.")
         return
 
@@ -128,32 +127,33 @@ async def send_to_groups(message: types.Message, state: FSMContext):
     global is_sending
     is_sending = True  # Yuborish jarayonini boshlash
 
-    all_links = get_all_links()
+    try:
+        all_links = get_all_links()
 
-    if not all_links:
-        await message.answer("Ma'lumotlar bazasida hech qanday guruh linki topilmadi.")
-        is_sending = False
-        return
+        if not all_links:
+            await message.answer("Ma'lumotlar bazasida hech qanday guruh linki topilmadi.")
+            return
 
-    unsubscribed_groups = []  # Obuna bo'lmagan guruhlar uchun ro'yxat
+        unsubscribed_groups = []  # Obuna bo'lmagan guruhlar uchun ro'yxat
 
-    # Paralel yuborishni tashkil etish
-    tasks = [send_to_group(link, message) for (link,) in all_links]
-    results = await asyncio.gather(*tasks)
+        # Paralel yuborishni tashkil etish
+        tasks = [send_to_group_with_semaphore(link, message) for (link,) in all_links]
+        results = await asyncio.gather(*tasks)
 
-    # Faqat haqiqatan ham yuborilmagan guruhlarni olish
-    unsubscribed_groups = [link for link in results if link is not None]
+        # Faqat haqiqatan ham yuborilmagan guruhlarni olish
+        unsubscribed_groups = [link for link in results if link is not None]
 
-    if unsubscribed_groups:
-        unsubscribed_groups_text = "\n".join(unsubscribed_groups)
-        await message.answer(f"Obuna bo'lmagan guruhlar:\n{unsubscribed_groups_text}")
-    else:
-        await message.answer("Hamma guruhlarga muvaffaqiyatli xabar yuborildi.")
-    await message.answer("guruhga xabarlar yuborilib bo'ldi !!! ")
-    await state.clear()
-    is_sending = False  # Yuborish jarayoni tugagandan keyin flagni tiklash
+        if unsubscribed_groups:
+            unsubscribed_groups_text = "\n".join(unsubscribed_groups)
+            await message.answer(f"Obuna bo'lmagan guruhlar:\n{unsubscribed_groups_text}")
+        else:
+            await message.answer("Hamma guruhlarga muvaffaqiyatli xabar yuborildi.")
 
-
+        await message.answer("Guruhga xabarlar yuborilib bo'ldi!")
+    
+    finally:
+        is_sending = False  # Yuborish jarayoni tugagandan keyin flagni tiklash
+        await state.clear()
 
 def add_data(link):
     try:
@@ -188,3 +188,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+
